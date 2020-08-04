@@ -1,5 +1,3 @@
-// +build ignore
-
 package main
 
 import (
@@ -16,8 +14,8 @@ import (
 
 // $ unzip-server -h 0.0.0.0:8100
 var (
-	host  = flag.String("h", "0.0.0.0:8100", "host address")
-	zipRc *zip.ReadCloser
+	host   = flag.String("h", "0.0.0.0:8100", "host address")
+	zipMap = map[string]*zip.File{}
 )
 
 // public.zip
@@ -27,25 +25,16 @@ func publicZip(writer http.ResponseWriter, req *http.Request) {
 		name = "index.html"
 	}
 
-	b := false
-	for _, file := range zipRc.File {
-		fmt.Printf("file.Name = %s\n", file.Name)
-		if file.Name == name {
-			send(writer, file, name)
-			b = true
-			break
-		}
-	}
-
-	// 404
-	if b == false {
+	if file := zipMap[name]; file != nil {
+		send(writer, file)
+	} else {
 		fmt.Printf("404 of %s\n", name)
 		writer.WriteHeader(404)
 	}
 }
 
-func send(writer http.ResponseWriter, file *zip.File, name string) {
-	fmt.Printf("Contents %s\n", name)
+func send(writer http.ResponseWriter, file *zip.File) {
+	fmt.Printf("Contents %s\n", file.Name)
 	writer.Header().Set("Content-Type", mime.TypeByExtension(filepath.Ext(name)))
 
 	rc, _ := file.Open()
@@ -64,9 +53,12 @@ func main() {
 	if _, err := os.Stat("public.zip"); os.IsNotExist(err) {
 		log.Fatal(err)
 	} else {
-		zipRc, _ = zip.OpenReader("public.zip")
+		zipRc, _ := zip.OpenReader("public.zip")
+		for _, file := range zipRc.File {
+			zipMap[file.Name] = file
+		}
+		defer zipRc.Close()
 	}
-	defer zipRc.Close()
 
 	http.HandleFunc("/", publicZip)
 
